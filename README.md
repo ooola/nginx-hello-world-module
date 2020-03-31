@@ -11,19 +11,17 @@ This code is not the prettiest and is intended as a demonstration only.
 
 ## Installation
 
-
-
    1. First build and install Nginx as usual with `make` and `make install`.
 
-   2. Make sure the [Optimizely C SDK](https://github.com/optimizely/go-sdk-c-wrapper) is build and copied to this
-      directory for whatever platform you are working on.
+   2. Make sure the [Optimizely C SDK](https://github.com/optimizely/go-sdk-c-wrapper) is built and the library (.so) is
+      copied to this directory for whatever platform you are working on.
 
-   3. Adjust the path's in the `Makefile` to nginx source. Then do `make config build install restart` in this
-      directory. See the `Makefile` for the supported targets.
+   3. Adjust the paths in the `Makefile` to Nginx source. Then do `make config build install` in this
+      directory. See the `Makefile` for additional supported targets when the source code is updated.
 
    4. Configure the module. There's only one directive `hello_world` that is supported in the **location** context only.
 
-      When loading dynamically first add the following to the nginx config file.
+      When loading dynamically first add the following to the Nginx config file.
 
           load_module modules/nginx_hello_world_module.so
 
