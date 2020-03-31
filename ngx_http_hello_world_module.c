@@ -29,12 +29,26 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include "optimizely/optimizely-sdk.h"
 
 
 #define HELLO_WORLD "hello world\r\n"
+#define OPTIMIZELY_SDK_ENABLED 1
 
 static char *ngx_http_hello_world(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_hello_world_handler(ngx_http_request_t *r);
+
+#if OPTIMIZELY_SDK_ENABLED
+static int optly_sdk_initialized = 0;
+static int optly_sdk_handle = 0;
+static int (*optly_sdk_init)();
+static int (*optly_sdk_client)(char *);
+static int (*optly_sdk_is_feature_enabled)(int handle, char*, optimizely_user_attributes*, char**);
+static char* (*optly_sdk_get_feature_variable_string)(int, char*, char*, optimizely_user_attributes*, char**);
+static char *sdk_key = NULL; // THIS MUST BE A VALID KEY
+//static char *user_id = "0x123SomeUserId00";
+#endif
+
 
 /**
  * This module provided directive: hello world.
@@ -87,6 +101,69 @@ ngx_module_t ngx_http_hello_world_module = {
     NGX_MODULE_V1_PADDING
 };
 
+
+#if OPTIMIZELY_SDK_ENABLED
+/**
+ * This loads the optimizely sdk and calls OptimizelySDKInit()
+ * if successful set optly_sdk_initialized = 1 and returns the sdk handle
+ */
+static void initialize_optimizely_sdk(char *sdk_path, ngx_http_request_t *r)
+{
+    if (optly_sdk_initialized == 1) {
+        return;
+    }
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> initalizing the optimizely sdk");
+
+    void *handle;
+    char *error;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> calling dlopen()");
+    handle = dlopen (sdk_path, RTLD_LAZY);
+    if (!handle) {
+        fputs (dlerror(), stderr);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, dlerror());
+        exit(1);
+    }
+    
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> dlopen succeded");
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> initializing the client");
+    optly_sdk_init = dlsym(handle, "optimizely_sdk_init");
+    if ((error = dlerror()) != NULL)  {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, error);
+        exit(1);
+    }
+    optly_sdk_init();
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> sdk initialized");
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> looking up function symbols");
+
+    optly_sdk_client = dlsym(handle, "optimizely_sdk_client");
+    if ((error = dlerror()) != NULL)  {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, error);
+        exit(1);
+    }
+
+    optly_sdk_is_feature_enabled = dlsym(handle, "optimizely_sdk_is_feature_enabled");
+    if ((error = dlerror()) != NULL)  {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, error);
+        exit(1);
+    }
+
+    optly_sdk_get_feature_variable_string = dlsym(handle, "optimizely_sdk_get_feature_variable_string");
+    if ((error = dlerror()) != NULL)  {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, error);
+        exit(1);
+    }
+
+    //create the sdk client handle
+    optly_sdk_handle = optly_sdk_client(sdk_key);
+
+    optly_sdk_initialized = 1;
+}
+#endif
+
 /**
  * Content handler.
  *
@@ -99,6 +176,7 @@ static ngx_int_t ngx_http_hello_world_handler(ngx_http_request_t *r)
 {
     ngx_buf_t *b;
     ngx_chain_t out;
+    u_char *message;
 
     /* Set the Content-Type header. */
     r->headers_out.content_type.len = sizeof("text/plain") - 1;
@@ -111,15 +189,33 @@ static ngx_int_t ngx_http_hello_world_handler(ngx_http_request_t *r)
     out.buf = b;
     out.next = NULL; /* just one buffer */
 
-    b->pos = ngx_hello_world; /* first position in memory of the data */
-    b->last = ngx_hello_world + sizeof(ngx_hello_world) - 1; /* last position in memory of the data */
+#if OPTIMIZELY_SDK_ENABLED
+    char *optly_error;
+    optimizely_user_attributes a = {0};
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> checking on feature");
+    initialize_optimizely_sdk("/usr/local/nginx/sbin/optimizely-sdk.so", r);
+
+    if (optly_sdk_is_feature_enabled(optly_sdk_handle, "current_greeting", &a, &optly_error) == 1) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> getting custom message");
+        message = (u_char *) optly_sdk_get_feature_variable_string(optly_sdk_handle, "current_greeting", "greeting", &a, &optly_error);
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "==> using default message");
+        message = ngx_hello_world; // "hello world\r\n"
+    }
+#else
+    message = ngx_hello_world;
+#endif
+
+    b->pos = message; /* first position in memory of the data */
+    b->last = message + ((long int)ngx_strlen((const char *)message)); /* last position in memory of the data */
+
     b->memory = 1; /* content is in read-only memory */
     b->last_buf = 1; /* there will be no more buffers in the request */
 
     /* Sending the headers for the reply. */
     r->headers_out.status = NGX_HTTP_OK; /* 200 status code */
     /* Get the content length of the body. */
-    r->headers_out.content_length_n = sizeof(ngx_hello_world) - 1;
+    r->headers_out.content_length_n = ((long int)ngx_strlen((const char *)message));
     ngx_http_send_header(r); /* Send the headers */
 
     /* Send the body, and return the status code of the output filter chain. */
