@@ -4,7 +4,7 @@
 
 This code demonstrates how to use the [Optimizely Go SDK C Wrapper](https://github.com/optimizely/go-sdk-c-wrapper) in Nginx.
 
-I used the code from [perusio nginx-hello-world-module](https://github.com/perusio/nginx-hello-world-module). He in turn
+I used the code from [Perusio's nginx-hello-world-module](https://github.com/perusio/nginx-hello-world-module). He in turn
 used code from from [Dominic's nginx module guide](http://dominicfallows.com/2011/02/20/hello-world-nginx-module-3/).
 
 This code is not the prettiest and is intended as a demonstration only.
