@@ -44,5 +44,15 @@ runwithoptimizelysdk:
 
 .PHONY: runhelloworld
 runhelloworld:
-	sudo cp ngx_http_hello_world_module.so ${NGINX_MODULE_DIR}/ngx_http_hello_world_module.so
+	sudo cp hello_world_module.so ${NGINX_MODULE_DIR}/ngx_http_hello_world_module.so
 	${MAKE} restart
+
+.PHONY: bench
+bench:
+	ab -n 100000 -c 500 -g out.tsv http://localhost:80/
+
+.PHONY: plot
+plot: plot.p
+	gnuplot plot.p
+	gnuplot timeseries.p
+
