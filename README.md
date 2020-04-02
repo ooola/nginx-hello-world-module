@@ -41,7 +41,7 @@ This code is not the prettiest and is intended as a demonstration only.
 
    5. Restart Nginx - `make restart`.
 
-## Many More details
+## Additional details
 
 ### /proc/cpu
 
